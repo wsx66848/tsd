@@ -12,6 +12,8 @@ from mmdet.core import wrap_fp16_model
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 
+from app import *
+
 
 class MultipleKVAction(argparse.Action):
     """
