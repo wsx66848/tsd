@@ -7,6 +7,8 @@ from mmdet import ops
 from mmdet.core import force_fp32
 from ..registry import ROI_EXTRACTORS
 
+import pdb
+
 
 @ROI_EXTRACTORS.register_module
 class SingleRoIExtractor(nn.Module):
@@ -88,6 +90,12 @@ class SingleRoIExtractor(nn.Module):
 
     @force_fp32(apply_to=('feats', ), out_fp16=True)
     def forward(self, feats, rois, roi_scale_factor=None):
+        """
+        feats  tuple  len == (fpn) roi layer number   feats[i] 2 * 256 * M * N
+        rois   tensor  1024 * 5(index, bbox x1, y1, x2, y2) index: which image 
+        return 1024(ROI number) * C(Channel number) * W(roi size) * H(roi size)
+        """
+        #pdb.set_trace()
         if len(feats) == 1:
             return self.roi_layers[0](feats[0], rois)
         out_size = self.roi_layers[0].out_size

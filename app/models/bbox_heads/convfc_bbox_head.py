@@ -1,10 +1,38 @@
 from mmdet.models.registry import HEADS
 from mmdet.models.bbox_heads import SharedFCBBoxHead
+import numpy as np
+import pdb
+from .relation_network import RelationModule
+from ..utils import *
 
 @HEADS.register_module
 class MySharedFCBBoxHead(SharedFCBBoxHead):
 
-    def forward(self, x):
+    def __init__(self, n_relations = 0, num_fcs=2, fc_out_channels=1024, *args, **kwargs):
+        super(MySharedFCBBoxHead, self).__init__(
+            num_fcs=num_fcs,
+            fc_out_channels=fc_out_channels,
+            *args,
+            **kwargs)
+        self.n_relations = n_relations
+        fc_features = self.fc_out_channels
+        if(n_relations>0):
+            self.dim_g = int(fc_features/n_relations)
+            self.relation= RelationModule(n_relations = n_relations, appearance_feature_dim=fc_features,
+                                        key_feature_dim = self.dim_g, geo_feature_dim = self.dim_g)
+
+    def forward(self, x, rois):
+        """
+        x 1024 (number of roi) * 256 (channel) * 7 * 7(roi feat size) apperance feature
+        rois 1024 * 5(index, x1, y1, x2, y2) geo feature
+        
+        return 
+            cls_score 1024 (number of roi) * num_classes
+            bbox_pred()  1024 (number of roi) * [num_classes * 4 (x,y,w,h)]
+        """
+        #pdb.set_trace()
+        if self.n_relations > 0:
+            position_embedding = PositionalEmbedding(rois[:, 1:],dim_g = self.dim_g)
         # shared part
         if self.num_shared_convs > 0:
             for conv in self.shared_convs:
@@ -15,8 +43,10 @@ class MySharedFCBBoxHead(SharedFCBBoxHead):
                 x = self.avg_pool(x)
             x = x.view(x.size(0), -1)
             for fc in self.shared_fcs:
-                #这有两个fc 在两个fcz中间加入Relation Networks  x就是输入  RN在构造器中的输入其实就一个特征维度fc_out_channels
+                #这有两个fc 在两个fc中间加入Relation Networks  x就是输入  RN在构造器中的输入其实就一个特征维度fc_out_channels
                 x = self.relu(fc(x))
+                if self.n_relations > 0:
+                    x = self.relation((x, position_embedding))
         # separate branches
         x_cls = x
         x_reg = x
