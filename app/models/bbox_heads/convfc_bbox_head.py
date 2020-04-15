@@ -8,13 +8,14 @@ from ..utils import *
 @HEADS.register_module
 class MySharedFCBBoxHead(SharedFCBBoxHead):
 
-    def __init__(self, n_relations = 0, num_fcs=2, fc_out_channels=1024, *args, **kwargs):
+    def __init__(self, n_relations = 0, distance_weight = True, num_fcs=2, fc_out_channels=1024, *args, **kwargs):
         super(MySharedFCBBoxHead, self).__init__(
             num_fcs=num_fcs,
             fc_out_channels=fc_out_channels,
             *args,
             **kwargs)
         self.n_relations = n_relations
+        self.distance_weight = distance_weight
         fc_features = self.fc_out_channels
         if(n_relations>0):
             self.dim_g = int(fc_features/n_relations)
@@ -23,7 +24,7 @@ class MySharedFCBBoxHead(SharedFCBBoxHead):
 
     def forward(self, x, rois):
         """
-        x 1024 (number of roi) * 256 (channel) * 7 * 7(roi feat size) apperance feature
+        x 1024 (number of roi = train_cfg.rcnn.sampler.number * image_per_gpu) * 256 (channel) * 7 * 7(roi feat size) apperance feature
         rois 1024 * 5(index, x1, y1, x2, y2) geo feature
         
         return 
@@ -33,6 +34,9 @@ class MySharedFCBBoxHead(SharedFCBBoxHead):
         #pdb.set_trace()
         if self.n_relations > 0:
             position_embedding = PositionalEmbedding(rois[:, 1:],dim_g = self.dim_g)
+            distance_weights = None
+            if self.distance_weight:
+                distance_weights = DistanceWeight(rois[:, 1:])
         # shared part
         if self.num_shared_convs > 0:
             for conv in self.shared_convs:
@@ -46,7 +50,7 @@ class MySharedFCBBoxHead(SharedFCBBoxHead):
                 #这有两个fc 在两个fc中间加入Relation Networks  x就是输入  RN在构造器中的输入其实就一个特征维度fc_out_channels
                 x = self.relu(fc(x))
                 if self.n_relations > 0:
-                    x = self.relation((x, position_embedding))
+                    x = self.relation((x, position_embedding), distance_weight = distance_weights)
         # separate branches
         x_cls = x
         x_reg = x

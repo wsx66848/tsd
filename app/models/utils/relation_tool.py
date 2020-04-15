@@ -44,7 +44,7 @@ def PositionalEmbedding( f_g, dim_g=64, wave_len=1000):
     delta_h = delta_h.view(size[0], size[1], 1)
 
     position_mat = torch.cat((delta_x, delta_y, delta_w, delta_h), -1)
-    # 1024 * (1024 * 4)
+    # roi_number * (roi_number * 4)
 
     feat_range = torch.arange(dim_g / 8).cuda()
     dim_mat = feat_range / (dim_g / 8)
@@ -58,7 +58,7 @@ def PositionalEmbedding( f_g, dim_g=64, wave_len=1000):
     mul_mat = mul_mat.view(size[0], size[1], -1)
     sin_mat = torch.sin(mul_mat)
     cos_mat = torch.cos(mul_mat)
-    embedding = torch.cat((sin_mat, cos_mat), -1)
+    embedding = torch.cat((sin_mat, cos_mat), -1)  #512 * 512 * 64((x * 8 + y * 8 + w * 8 + h * 8)  * 2(sin and cos))
 
     return embedding
 
@@ -66,5 +66,21 @@ def PositionalEmbedding( f_g, dim_g=64, wave_len=1000):
 """
 distance weight
 Tesor(N, N) N number of rois
-
 """
+
+def DistanceWeight(f_g):
+    x_min, y_min, x_max, y_max = torch.chunk(f_g, 4, dim=1)
+
+    cx = (x_min + x_max) * 0.5
+    cy = (y_min + y_max) * 0.5
+    w = (x_max - x_min) + 1.
+    h = (y_max - y_min) + 1.
+
+    delta_x = cx.view(1, -1) - cx
+    delta_x = torch.pow(delta_x / w, 2)
+    delta_y = cy.view(1, -1) - cy
+    delta_y = torch.pow(delta_y / h, 2)
+
+    delta_ = (delta_x + delta_y) * -0.5
+    weight = torch.exp(delta_, out=None)
+    return weight # N * N

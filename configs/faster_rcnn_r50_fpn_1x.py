@@ -35,6 +35,7 @@ model = dict(
     bbox_head=dict(
         type='MySharedFCBBoxHead',
         n_relations=16,
+        distance_weight=True,
         num_fcs=2,
         in_channels=256,
         fc_out_channels=1024,
@@ -80,7 +81,7 @@ train_cfg = dict(
             ignore_iof_thr=-1),
         sampler=dict(
             type='RandomSampler',
-            num=512,
+            num=512,   # number of roi
             pos_fraction=0.25,
             neg_pos_ub=-1,
             add_gt_as_proposals=True),
@@ -103,7 +104,7 @@ test_cfg = dict(
 )
 # dataset settings
 dataset_type = 'BackplaneEasyDataset'
-data_root = 'data/backplane_batch_aug/'
+data_root = 'data/backplane_batch_full/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -151,7 +152,7 @@ data = dict(
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')
 # optimizer
-optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -174,7 +175,7 @@ total_epochs = 24
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 #work_dir = './work_dirs/faster_rcnn_r50_fpn_1x'
-work_dir = './work_dirs/backplane_batch_aug_rcnn_r50_fpn_1x'
+work_dir = './work_dirs/backplane_batch_aug_rcnn_r50_fpn_1x_rn'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
