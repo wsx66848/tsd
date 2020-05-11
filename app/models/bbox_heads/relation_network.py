@@ -63,9 +63,12 @@ class RelationUnit(nn.Module):
         w_a = scaled_dot.view(N,N)
 
         w_mn = torch.log(torch.clamp(w_g, min = 1e-6)) + w_a
-        w_mn = torch.nn.Softmax(dim=1)(w_mn)  #w(mn) N * N
         if distance_weight is not None:
-            w_mn = w_mn * distance_weight
+            zeros = torch.zeros(distance_weight.size()).cuda();
+            distance_weight = torch.where(distance_weight > 0.2, distance_weight, zeros)
+            # w_mn = w_mn +  torch.log(torch.clamp(distance_weight, min = 1e-6))
+            w_mn = w_mn +  torch.log(distance_weight)
+        w_mn = torch.nn.Softmax(dim=1)(w_mn)  #w(mn) N * N
 
         w_v = self.WV(f_a)
 

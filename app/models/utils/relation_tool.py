@@ -69,6 +69,7 @@ Tesor(N, N) N number of rois
 """
 
 def DistanceWeight(f_g):
+    #pdb.set_trace()
     x_min, y_min, x_max, y_max = torch.chunk(f_g, 4, dim=1)
 
     cx = (x_min + x_max) * 0.5
@@ -81,6 +82,6 @@ def DistanceWeight(f_g):
     delta_y = cy.view(1, -1) - cy
     delta_y = torch.pow(delta_y / h, 2)
 
-    delta_ = (delta_x + delta_y) * -0.5
+    delta_ = (delta_x + delta_y) * -0.25
     weight = torch.exp(delta_, out=None)
     return weight # N * N
