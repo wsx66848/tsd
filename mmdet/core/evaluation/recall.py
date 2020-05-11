@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 import numpy as np
+import mmcv
 from terminaltables import AsciiTable
 
 from mmdet.utils import print_log
@@ -66,7 +67,8 @@ def eval_recalls(gts,
                  proposals,
                  proposal_nums=None,
                  iou_thrs=0.5,
-                 logger=None):
+                 logger=None,
+                 work_dir=None):
     """Calculate recalls.
 
     Args:
@@ -103,7 +105,7 @@ def eval_recalls(gts,
     all_ious = np.array(all_ious)
     recalls = _recalls(all_ious, proposal_nums, iou_thrs)
 
-    print_recall_summary(recalls, proposal_nums, iou_thrs, logger=logger)
+    print_recall_summary(recalls, proposal_nums, iou_thrs, logger=logger, work_dir=work_dir)
     return recalls
 
 
@@ -112,7 +114,8 @@ def print_recall_summary(recalls,
                          iou_thrs,
                          row_idxs=None,
                          col_idxs=None,
-                         logger=None):
+                         logger=None,
+                         work_dir=None):
     """Print recalls in a table.
 
     Args:
@@ -141,6 +144,9 @@ def print_recall_summary(recalls,
         table_data.append(row)
     table = AsciiTable(table_data)
     print_log('\n' + table.table, logger=logger)
+    if work_dir is not None and mmcv.is_str(work_dir):
+        with open(work_dir, 'a+') as f:
+            print(table.table, file=f)
 
 
 def plot_num_recall(recalls, proposal_nums):

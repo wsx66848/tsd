@@ -270,6 +270,7 @@ def eval_map(det_results,
              dataset=None,
              logger=None,
              nproc=4):
+             work_dir=None):
     """Evaluate mAP of a dataset.
 
     Args:
@@ -382,7 +383,7 @@ def eval_map(det_results,
         mean_ap = np.array(aps).mean().item() if aps else 0.0
 
     print_map_summary(
-        mean_ap, eval_results, dataset, area_ranges, logger=logger)
+        mean_ap, eval_results, dataset, area_ranges, logger=logger, work_dir=work_dir)
 
     return mean_ap, eval_results
 
@@ -391,7 +392,8 @@ def print_map_summary(mean_ap,
                       results,
                       dataset=None,
                       scale_ranges=None,
-                      logger=None):
+                      logger=None,
+                      work_dir=None):
     """Print mAP and results of each class.
 
     A table will be printed to show the gts/dets/recall/AP of each class and
@@ -453,3 +455,6 @@ def print_map_summary(mean_ap,
         table = AsciiTable(table_data)
         table.inner_footing_row_border = True
         print_log('\n' + table.table, logger=logger)
+        if work_dir is not None and mmcv.is_str(work_dir):
+            with open(work_dir, 'a+') as f:
+                print(table.table, file=f)

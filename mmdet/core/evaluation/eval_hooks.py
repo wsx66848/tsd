@@ -30,7 +30,7 @@ class EvalHook(Hook):
 
     def evaluate(self, runner, results):
         eval_res = self.dataloader.dataset.evaluate(
-            results, logger=runner.logger, **self.eval_kwargs)
+            results, logger=runner.logger, work_dir=runner.work_dir, **self.eval_kwargs)
         for name, val in eval_res.items():
             runner.log_buffer.output[name] = val
         runner.log_buffer.ready = True
