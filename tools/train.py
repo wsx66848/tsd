@@ -3,6 +3,7 @@ import argparse
 import copy
 import os
 import os.path as osp
+import shutil
 import time
 
 import mmcv
@@ -79,6 +80,11 @@ def main():
         cfg.gpu_ids = args.gpu_ids
     else:
         cfg.gpu_ids = range(1) if args.gpus is None else range(args.gpus)
+
+    # create config file in workdir
+    work_dir = osp.abspath(cfg.work_dir)
+    mmcv.mkdir_or_exist(work_dir)
+    shutil.copy(osp.abspath(args.config), osp.join(work_dir, osp.basename(args.config) + time.strftime('_%Y%m%d_%H%M%S',time.localtime(time.time()))))
 
     if args.autoscale_lr:
         # apply the linear scaling rule (https://arxiv.org/abs/1706.02677)
