@@ -5,6 +5,8 @@ from ..utils import multi_apply
 from .transforms import bbox2delta, delta2bbox
 import numpy as np
 
+import pdb
+
 def bbox_target(pos_bboxes_list,
                 neg_bboxes_list,
                 pos_gt_bboxes_list,
@@ -183,41 +185,41 @@ def bbox_target_single_tsd(pos_bboxes,
     TSD_pos_rois = rois_r[:num_pos]
     pos_rois = rois[:num_pos]
 
-    if num_pos > 0:
-        labels[:num_pos] = pos_gt_labels
-        TSD_labels[:num_pos] = pos_gt_labels
-        pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight
-        label_weights[:num_pos] = pos_weight
-        TSD_label_weights[:num_pos] = pos_weight
-        pos_bbox_targets = bbox2delta(pos_bboxes, pos_gt_bboxes, target_means,
-                                      target_stds)
-        TSD_pos_bbox_targets = bbox2delta(TSD_pos_rois[:,1:], pos_gt_bboxes, target_means,
-                                      target_stds)
-        bbox_targets[:num_pos, :] = pos_bbox_targets
-        bbox_weights[:num_pos, :] = 1
-        TSD_bbox_targets[:num_pos, :] = TSD_pos_bbox_targets
-        TSD_bbox_weights[:num_pos, :] = 1
+    #if num_pos > 0:
+    labels[:num_pos] = pos_gt_labels
+    TSD_labels[:num_pos] = pos_gt_labels
+    pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight
+    label_weights[:num_pos] = pos_weight
+    TSD_label_weights[:num_pos] = pos_weight
+    pos_bbox_targets = bbox2delta(pos_bboxes, pos_gt_bboxes, target_means,
+                                    target_stds)
+    TSD_pos_bbox_targets = bbox2delta(TSD_pos_rois[:,1:], pos_gt_bboxes, target_means,
+                                    target_stds)
+    bbox_targets[:num_pos, :] = pos_bbox_targets
+    bbox_weights[:num_pos, :] = 1
+    TSD_bbox_targets[:num_pos, :] = TSD_pos_bbox_targets
+    TSD_bbox_weights[:num_pos, :] = 1
 
-        # compute PC for TSD
-        # 1. compute the PC for classification
-        cls_score_soft = F.softmax(cls_score_,dim=1)
-        TSD_cls_score_soft = F.softmax(TSD_cls_score_,dim=1)
-        cls_pc_margin = torch.tensor(cls_pc_margin).to(labels.device).to(dtype=cls_score_soft.dtype)
-        cls_pc_margin = torch.min(1-cls_score_soft[np.arange(len(TSD_labels)),labels],cls_pc_margin).detach()
-        pc_cls_loss = F.relu(-(TSD_cls_score_soft[np.arange(len(TSD_labels)),TSD_labels] - cls_score_soft[np.arange(len(TSD_labels)),labels].detach() - cls_pc_margin))
+    # compute PC for TSD
+    # 1. compute the PC for classification
+    cls_score_soft = F.softmax(cls_score_,dim=1)
+    TSD_cls_score_soft = F.softmax(TSD_cls_score_,dim=1)
+    cls_pc_margin = torch.tensor(cls_pc_margin).to(labels.device).to(dtype=cls_score_soft.dtype)
+    cls_pc_margin = torch.min(1-cls_score_soft[np.arange(len(TSD_labels)),labels],cls_pc_margin).detach()
+    pc_cls_loss = F.relu(-(TSD_cls_score_soft[np.arange(len(TSD_labels)),TSD_labels] - cls_score_soft[np.arange(len(TSD_labels)),labels].detach() - cls_pc_margin))
 
-        # 2. compute the PC for localization
-        N = bbox_pred_.shape[0]
-        bbox_pred_ = bbox_pred_.view(N,-1,4)
-        TSD_bbox_pred_ = TSD_bbox_pred_.view(N,-1,4)
-        sibling_head_bboxes = delta2bbox(pos_bboxes, bbox_pred_[np.arange(num_pos), labels[:num_pos]], means=target_means, stds=target_stds)
-        TSD_head_bboxes = delta2bbox(TSD_pos_rois[:,1:], TSD_bbox_pred_[np.arange(num_pos), TSD_labels[:num_pos]], means=target_means, stds=target_stds)
+    # 2. compute the PC for localization
+    N = bbox_pred_.shape[0]
+    bbox_pred_ = bbox_pred_.view(N,-1,4)
+    TSD_bbox_pred_ = TSD_bbox_pred_.view(N,-1,4)
+    sibling_head_bboxes = delta2bbox(pos_bboxes, bbox_pred_[np.arange(num_pos), labels[:num_pos]], means=target_means, stds=target_stds)
+    TSD_head_bboxes = delta2bbox(TSD_pos_rois[:,1:], TSD_bbox_pred_[np.arange(num_pos), TSD_labels[:num_pos]], means=target_means, stds=target_stds)
 
-        ious, gious = iou_overlaps(sibling_head_bboxes, pos_gt_bboxes)
-        TSD_ious, TSD_gious = iou_overlaps(TSD_head_bboxes, pos_gt_bboxes)
-        loc_pc_margin = torch.tensor(loc_pc_margin).to(ious.device).to(dtype=ious.dtype)
-        loc_pc_margin = torch.min(1-ious.detach(),loc_pc_margin).detach()
-        pc_loc_loss = F.relu(-(TSD_ious - ious.detach() - loc_pc_margin))
+    ious, gious = iou_overlaps(sibling_head_bboxes, pos_gt_bboxes)
+    TSD_ious, TSD_gious = iou_overlaps(TSD_head_bboxes, pos_gt_bboxes)
+    loc_pc_margin = torch.tensor(loc_pc_margin).to(ious.device).to(dtype=ious.dtype)
+    loc_pc_margin = torch.min(1-ious.detach(),loc_pc_margin).detach()
+    pc_loc_loss = F.relu(-(TSD_ious - ious.detach() - loc_pc_margin))
         
     if num_neg > 0:
         label_weights[-num_neg:] = 1.

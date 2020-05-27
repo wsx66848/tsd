@@ -269,7 +269,7 @@ def eval_map(det_results,
              iou_thr=0.5,
              dataset=None,
              logger=None,
-             nproc=4):
+             nproc=4,
              work_dir=None):
     """Evaluate mAP of a dataset.
 

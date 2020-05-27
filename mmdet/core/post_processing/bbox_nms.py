@@ -1,6 +1,7 @@
 import torch
 
 from mmdet.ops.nms import nms_wrapper
+from myutils import my_config
 
 
 def multiclass_nms(multi_bboxes,
@@ -72,5 +73,46 @@ def multiclass_nms(multi_bboxes,
         bboxes = bboxes[inds]
         scores = scores[inds]
         labels = labels[inds]
+    
+    """
+    # target backplane
+    # import pdb;pdb.set_trace()
+    # find which label is backplane
+    bbox_size = bboxes.size(0)
+    cat2label = {cat: i + 1 for i, cat in enumerate(my_config.get('classes'))}
+    backplane_indic = (labels == cat2label['backplane'] - 1).nonzero()
+    backplane_indic = backplane_indic[:, 0].tolist()
+
+    # calculate area of bboxes
+    self_bboxes = (bboxes[:, 2] - bboxes[:, 0] + 1) * (bboxes[:, 3] - bboxes[:, 1] + 1) 
+
+    # calculate intersection of bboxes
+    zeros = torch.zeros(bbox_size, bbox_size).cuda()
+    x_min = torch.max(bboxes[:, 0, None], bboxes[None, :, 0])
+    x_max = torch.min(bboxes[:, 2, None], bboxes[None, :, 2])
+    y_min = torch.max(bboxes[:, 1, None], bboxes[None, :, 1])
+    y_max = torch.min(bboxes[:, 3, None], bboxes[None, :, 3])
+    delta_x = torch.max(x_max - x_min + 1, zeros)
+    delta_y = torch.max(y_max - y_min + 1, zeros)
+    intersection = delta_x * delta_y
+    # calculate ios of bboxes
+    ios = intersection / self_bboxes[:, None]
+    find = (ios > 0.9).nonzero().tolist()
+    deleted = torch.full([bbox_size], True).bool().cuda()
+    for inter in find:
+        if inter[0] == inter[1]:
+            continue
+        if inter[0] not in backplane_indic and inter[1] in backplane_indic:
+            continue
+        if scores[inter[0]] < scores[inter[1]]:
+            deleted[inter[0]] = False
+
+    bboxes = bboxes[deleted]
+    scores = scores[deleted]
+    labels = labels[deleted]
+    """
 
     return torch.cat([bboxes, scores[:, None]], 1), labels
+
+
+

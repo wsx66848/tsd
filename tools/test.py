@@ -13,6 +13,8 @@ from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 
 from app import *
+from myutils import my_config
+import json
 
 
 class MultipleKVAction(argparse.Action):
@@ -130,6 +132,13 @@ def main():
         dist=distributed,
         shuffle=False)
 
+    # load anchors
+    if isinstance(cfg.model, dict) and cfg.model.get('type', 'FasterRCNN') == 'MyFasterRCNN':
+        anchors = dict()
+        with open(os.path.join(cfg.work_dir, 'anchors.json'), 'r') as f:
+            anchors = json.load(f)
+        print("loaded anchors: {}\n".format(anchors))
+        cfg.model['anchors'] = anchors
     # build the model and load checkpoint
     model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
     fp16_cfg = cfg.get('fp16', None)
@@ -144,6 +153,8 @@ def main():
         model.CLASSES = checkpoint['meta']['CLASSES']
     else:
         model.CLASSES = dataset.CLASSES
+    
+    my_config.set('classes', model.CLASSES)
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])

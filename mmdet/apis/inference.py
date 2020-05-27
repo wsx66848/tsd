@@ -12,6 +12,9 @@ from mmdet.core import get_classes
 from mmdet.datasets.pipelines import Compose
 from mmdet.models import build_detector
 
+import os
+import json
+
 
 def init_detector(config, checkpoint=None, device='cuda:0'):
     """Initialize a detector from config file.
@@ -31,6 +34,15 @@ def init_detector(config, checkpoint=None, device='cuda:0'):
         raise TypeError('config must be a filename or Config object, '
                         'but got {}'.format(type(config)))
     config.model.pretrained = None
+
+    # load anchors
+    if isinstance(config.model, dict) and config.model.get('type', 'FasterRCNN') == 'MyFasterRCNN':
+        anchors = dict()
+        with open(os.path.join(config.work_dir, 'anchors.json'), 'r') as f:
+            anchors = json.load(f)
+        print("loaded anchors: {}\n".format(anchors))
+        config.model['anchors'] = anchors
+
     model = build_detector(config.model, test_cfg=config.test_cfg)
     if checkpoint is not None:
         checkpoint = load_checkpoint(model, checkpoint)

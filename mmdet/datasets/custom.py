@@ -162,7 +162,7 @@ class CustomDataset(Dataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thr=0.5,
                  scale_ranges=None,
-                 work_dir=work_dir):
+                 work_dir=None):
         """Evaluate the dataset.
 
         Args:
@@ -196,14 +196,14 @@ class CustomDataset(Dataset):
                 iou_thr=iou_thr,
                 dataset=self.CLASSES,
                 logger=logger,
-                work_dir=osp.join(work_dir, "eval_map"))
+                work_dir=None if work_dir is None else osp.join(work_dir, "eval_map"))
             eval_results['mAP'] = mean_ap
         elif metric == 'recall':
             gt_bboxes = [ann['bboxes'] for ann in annotations]
             if isinstance(iou_thr, float):
                 iou_thr = [iou_thr]
             recalls = eval_recalls(
-                gt_bboxes, results, proposal_nums, iou_thr, logger=logger, work_dir=osp.join(work_dir, "eval_recall"))
+                gt_bboxes, results, proposal_nums, iou_thr, logger=logger, work_dir=None if work_dir is None else osp.join(work_dir, "eval_recall"))
             for i, num in enumerate(proposal_nums):
                 for j, iou in enumerate(iou_thr):
                     eval_results['recall@{}@{}'.format(num, iou)] = recalls[i,

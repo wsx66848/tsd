@@ -43,8 +43,7 @@ model = dict(
         in_channels=256,
         fc_out_channels=1024,
         roi_feat_size=7,
-        # num_classes=11,
-        num_classes=2,
+        num_classes=10,
         # cls_pc_margin=0.3,
         # loc_pc_margin=0.3,
         target_means=[0., 0., 0., 0.],
@@ -111,7 +110,7 @@ test_cfg = dict(
     # nms=dict(type='nms', iou_thr=0.2)
 )
 # dataset settings
-dataset_type = 'BackplaneEasyDataset'
+dataset_type = 'BackplaneInternDataset'
 data_root = 'data/backplane_voc_20200506/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -148,8 +147,7 @@ data = dict(
         #ann_file=data_root + 'ImageSets/Main/trainval.txt',
         ann_file=data_root + 'ImageSets/Main/train.txt',
         img_prefix=data_root,
-        # cluster_nums=[5, 9, 5, 5, 9, 6, 5, 9, 6, 9],  # len classes - 1
-        cluster_nums=[16],  # len classes - 1
+        cluster_nums=[5, 9, 5, 5, 9, 6,  9, 6, 9],  # len classes - 1
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
@@ -187,7 +185,7 @@ total_epochs = 16
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 #work_dir = './work_dirs/faster_rcnn_r50_fpn_1x'
-work_dir = './work_dirs/backplane_voc_20200506_rcnn_r50_fpn_1x_multiscale_kmeans_only'
+work_dir = './work_dirs/backplane_voc_20200506_rcnn_r50_fpn_1x_multiscale_kmeans_intern'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

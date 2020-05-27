@@ -18,12 +18,15 @@ from mmdet.models import build_detector
 from mmdet.utils import collect_env, get_root_logger
 
 from app import *
+from myutils import my_config
+import json
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
+    parser.add_argument('--timestamp', help='the timestamp when starting training')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')
     parser.add_argument(
@@ -81,14 +84,37 @@ def main():
     else:
         cfg.gpu_ids = range(1) if args.gpus is None else range(args.gpus)
 
-    # create config file in workdir
-    work_dir = osp.abspath(cfg.work_dir)
-    mmcv.mkdir_or_exist(work_dir)
-    shutil.copy(osp.abspath(args.config), osp.join(work_dir, osp.basename(args.config) + time.strftime('_%Y%m%d_%H%M%S',time.localtime(time.time()))))
+    cur_timestamp = int(time.time()) if args.timestamp is None else int(args.timestamp)
+    # read meta info, init config and log file name
+    meta_info_path = osp.join('metas', 'meta_{}.json'.format(cur_timestamp))
+    need_write = True
+    if osp.exists(meta_info_path):
+        need_write = False
+        with open(meta_info_path, 'r') as f:
+            meta_info = json.load(f)
+            data_root = meta_info['data_root']
+            cfg.work_dir = meta_info['work_dir']
+            # voc data format
+            cfg.data_root = data_root + '/'
+            old_prefix = cfg.data.train.img_prefix
+            cfg.data.train.img_prefix = cfg.data_root
+            cfg.data.val.img_prefix = cfg.data_root
+            cfg.data.test.img_prefix = cfg.data_root
+            cfg.data.train.ann_file = cfg.data.train.ann_file.replace(old_prefix, cfg.data_root) 
+            cfg.data.val.ann_file = cfg.data.val.ann_file.replace(old_prefix, cfg.data_root) 
+            cfg.data.test.ann_file = cfg.data.test.ann_file.replace(old_prefix, cfg.data_root) 
 
     if args.autoscale_lr:
         # apply the linear scaling rule (https://arxiv.org/abs/1706.02677)
         cfg.optimizer['lr'] = cfg.optimizer['lr'] * len(cfg.gpu_ids) / 8
+
+    # create config file in workdir
+    work_dir = osp.abspath(cfg.work_dir)
+    mmcv.mkdir_or_exist(work_dir)
+    config_name = osp.join(work_dir, '{}.py'.format(osp.splitext(osp.basename(args.config))[0] + time.strftime('_%Y%m%d_%H%M%S',time.localtime(cur_timestamp))))
+    shutil.copy(args.config, config_name)
+    # with open(config_name, 'w+') as f:
+    #    f.write(cfg.dump())
 
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
@@ -100,9 +126,18 @@ def main():
     # create work_dir
     mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
     # init the logger before other steps
-    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(cur_timestamp))
     log_file = osp.join(cfg.work_dir, '{}.log'.format(timestamp))
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
+
+    if need_write:
+        osp.mkdir_or_exist(metas)
+        with open(meta_info_path, 'w+') as f:
+            meta_info = dict()
+            meta_info['config_path'] = config_name
+            meta_info['log_path'] = log_file + '.json'
+            meta_info['work_dir'] = cfg.work_dir + '_intern'
+            json.dump(meta_info, f)
 
     # init the meta dict to record some important information such as
     # environment info and seed, which will be logged
@@ -128,10 +163,19 @@ def main():
     cfg.seed = args.seed
     meta['seed'] = args.seed
 
+    cfg.data.train['quiet'] = True
+    datasets = [build_dataset(cfg.data.train)]
+
+    # load anchors
+    if isinstance(cfg.model, dict) and cfg.model.get('type', 'FasterRCNN') == 'MyFasterRCNN':
+        anchors = dict()
+        with open(os.path.join(cfg.work_dir, 'anchors.json'), 'r') as f:
+            anchors = json.load(f)
+        logger.info('loaded anchors: {}\n'.format(anchors))
+        cfg.model['anchors'] = anchors
     model = build_detector(
         cfg.model, train_cfg=cfg.train_cfg, test_cfg=cfg.test_cfg)
-
-    datasets = [build_dataset(cfg.data.train)]
+    
     if len(cfg.workflow) == 2:
         val_dataset = copy.deepcopy(cfg.data.val)
         val_dataset.pipeline = cfg.data.train.pipeline
@@ -145,6 +189,7 @@ def main():
             CLASSES=datasets[0].CLASSES)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+    my_config.set('classes', model.CLASSES)
     train_detector(
         model,
         datasets,
@@ -153,7 +198,6 @@ def main():
         validate=args.validate,
         timestamp=timestamp,
         meta=meta)
-
 
 if __name__ == '__main__':
     main()
