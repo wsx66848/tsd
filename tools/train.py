@@ -26,7 +26,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--work_dir', help='the dir to save logs and models')
-    parser.add_argument('--timestamp', help='the timestamp when starting training')
     parser.add_argument(
         '--resume_from', help='the checkpoint file to resume from')
     parser.add_argument(
@@ -84,26 +83,6 @@ def main():
     else:
         cfg.gpu_ids = range(1) if args.gpus is None else range(args.gpus)
 
-    cur_timestamp = int(time.time()) if args.timestamp is None else int(args.timestamp)
-    # read meta info, init config and log file name
-    meta_info_path = osp.join('metas', 'meta_{}.json'.format(cur_timestamp))
-    need_write = True
-    if osp.exists(meta_info_path):
-        need_write = False
-        with open(meta_info_path, 'r') as f:
-            meta_info = json.load(f)
-            data_root = meta_info['data_root']
-            cfg.work_dir = meta_info['work_dir']
-            # voc data format
-            cfg.data_root = data_root + '/'
-            old_prefix = cfg.data.train.img_prefix
-            cfg.data.train.img_prefix = cfg.data_root
-            cfg.data.val.img_prefix = cfg.data_root
-            cfg.data.test.img_prefix = cfg.data_root
-            cfg.data.train.ann_file = cfg.data.train.ann_file.replace(old_prefix, cfg.data_root) 
-            cfg.data.val.ann_file = cfg.data.val.ann_file.replace(old_prefix, cfg.data_root) 
-            cfg.data.test.ann_file = cfg.data.test.ann_file.replace(old_prefix, cfg.data_root) 
-
     if args.autoscale_lr:
         # apply the linear scaling rule (https://arxiv.org/abs/1706.02677)
         cfg.optimizer['lr'] = cfg.optimizer['lr'] * len(cfg.gpu_ids) / 8
@@ -111,7 +90,7 @@ def main():
     # create config file in workdir
     work_dir = osp.abspath(cfg.work_dir)
     mmcv.mkdir_or_exist(work_dir)
-    config_name = osp.join(work_dir, '{}.py'.format(osp.splitext(osp.basename(args.config))[0] + time.strftime('_%Y%m%d_%H%M%S',time.localtime(cur_timestamp))))
+    config_name = osp.join(work_dir, '{}.py'.format(osp.splitext(osp.basename(args.config))[0] + time.strftime('_%Y%m%d_%H%M%S',time.localtime(time.time()))))
     shutil.copy(args.config, config_name)
     # with open(config_name, 'w+') as f:
     #    f.write(cfg.dump())
@@ -126,18 +105,14 @@ def main():
     # create work_dir
     mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
     # init the logger before other steps
-    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(cur_timestamp))
+    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(time.time()))
     log_file = osp.join(cfg.work_dir, '{}.log'.format(timestamp))
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
 
-    if need_write:
-        osp.mkdir_or_exist(metas)
-        with open(meta_info_path, 'w+') as f:
-            meta_info = dict()
-            meta_info['config_path'] = config_name
-            meta_info['log_path'] = log_file + '.json'
-            meta_info['work_dir'] = cfg.work_dir + '_intern'
-            json.dump(meta_info, f)
+    if cfg.get('version', None) is not None:
+        env_info = dict(config_path=config_name, log_path=osp.abspath(log_file + '.json'))
+        with open('env_info.json', 'w+') as f:
+            json.dump(env_info, f)
 
     # init the meta dict to record some important information such as
     # environment info and seed, which will be logged

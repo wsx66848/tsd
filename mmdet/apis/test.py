@@ -2,6 +2,7 @@ import os.path as osp
 import pickle
 import shutil
 import tempfile
+import copy
 
 import mmcv
 import torch
@@ -15,12 +16,19 @@ def single_gpu_test(model, data_loader, show=False):
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
+        data_with_bbox = copy.deepcopy(data)
+        if 'gt_bboxes' in data:
+            data.pop('gt_bboxes')
+        if 'gt_labels' in data:
+            data.pop('gt_labels')
+
         with torch.no_grad():
             result = model(return_loss=False, rescale=not show, **data)
         results.append(result)
 
+        data = data_with_bbox
         if show:
-            model.module.show_result(data, result)
+            model.module.show_result(data, result, score_thr=0.05)
 
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
@@ -54,6 +62,10 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
     if rank == 0:
         prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
+        if 'gt_bboxes' in data:
+            data.pop('gt_bboxes')
+        if 'gt_labels' in data:
+            data.pop('gt_labels')
         with torch.no_grad():
             result = model(return_loss=False, rescale=True, **data)
         results.append(result)

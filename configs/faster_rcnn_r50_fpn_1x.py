@@ -43,8 +43,8 @@ model = dict(
         in_channels=256,
         fc_out_channels=1024,
         roi_feat_size=7,
-        # num_classes=11,
-        num_classes=2,
+        num_classes=11,
+        # num_classes=2,
         # cls_pc_margin=0.3,
         # loc_pc_margin=0.3,
         target_means=[0., 0., 0., 0.],
@@ -104,15 +104,16 @@ test_cfg = dict(
         min_bbox_size=0),
     rcnn=dict(
         #score_thr=0.05, nms=dict(type='nms', iou_thr=0.1), max_per_img=100)
-        score_thr=0.00, nms=dict(type='nms', iou_thr=0.2), max_per_img=100)
-        #score_thr=0.05, nms=dict(type='soft_nms', iou_thr=0.1, min_score=0.05), max_per_img=100)
+        score_thr=0.05, nms=dict(type='nms', iou_thr=0.2), max_per_img=100)
+        # score_thr=0.05, nms=dict(type='soft_nms', iou_thr=0.2, min_score=0.05), max_per_img=100)
     # soft-nms is also supported for rcnn testing
     # e.g., nms=dict(type='soft_nms', iou_thr=0.5, min_score=0.05)
     # nms=dict(type='nms', iou_thr=0.2)
 )
 # dataset settings
 dataset_type = 'BackplaneEasyDataset'
-data_root = 'data/backplane_voc_20200506/'
+data_root = 'data/backplane_voc_20200520/'
+version = 'v1.1'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -127,6 +128,7 @@ train_pipeline = [
 ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='MultiScaleFlipAug',
         img_scale=[(1333, 800), (1500, 900), (1660, 1000)],
@@ -137,7 +139,7 @@ test_pipeline = [
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(type='ImageToTensor', keys=['img']),
-            dict(type='Collect', keys=['img']),
+            dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
         ])
 ]
 data = dict(
@@ -148,8 +150,8 @@ data = dict(
         #ann_file=data_root + 'ImageSets/Main/trainval.txt',
         ann_file=data_root + 'ImageSets/Main/train.txt',
         img_prefix=data_root,
-        # cluster_nums=[5, 9, 5, 5, 9, 6, 5, 9, 6, 9],  # len classes - 1
-        cluster_nums=[16],  # len classes - 1
+        cluster_nums=[5, 9, 5, 5, 9, 6, 5, 9, 6, 9],  # len classes - 1
+        # cluster_nums=[16],  # len classes - 1
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
@@ -169,7 +171,8 @@ optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 lr_config = dict(
     policy='step',
     warmup='linear',
-    warmup_iters=290, # 增长到该iter后, 就增到了baselr(在第一个epoch内)
+    # warmup_iters=291, # 增长到该iter后, 就增到了baselr(在第一个epoch内)
+    warmup_iters=254, # 增长到该iter后, 就增到了baselr(在第一个epoch内)
     # warmup_iters=1158, # 增长到该iter后, 就增到了baselr(在第一个epoch内)
     warmup_ratio=1.0 / 3, # ratio越大, 相同的cur_iter, lr就越大
     step=[9, 12])
@@ -187,7 +190,7 @@ total_epochs = 16
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 #work_dir = './work_dirs/faster_rcnn_r50_fpn_1x'
-work_dir = './work_dirs/backplane_voc_20200506_rcnn_r50_fpn_1x_multiscale_kmeans_only'
+work_dir = './work_dirs/backplane_voc_20200520_rcnn_r50_fpn_1x_multiscale_kmeans_scorethr0.05'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

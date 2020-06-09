@@ -190,9 +190,13 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
                 for i, bbox in enumerate(bbox_result)
             ]
             labels = np.concatenate(labels)
+            print("img_meta: {}".format(img_meta))
             mmcv.imshow_det_bboxes(
                 img_show,
                 bboxes,
                 labels,
-                class_names=class_names,
-                score_thr=score_thr)
+                # class_names=class_names,
+                class_names=[str(i) for i in range(len(class_names))],
+                score_thr=score_thr,
+                gt_bboxes=data['gt_bboxes'][0][0].numpy(),
+                gt_labels=(data['gt_labels'][0][0] - 1).numpy())

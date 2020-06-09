@@ -111,7 +111,7 @@ test_cfg = dict(
 )
 # dataset settings
 dataset_type = 'BackplaneInternDataset'
-data_root = 'data/backplane_voc_20200506/'
+data_root = 'data/backplane_voc_20200506_v1.1/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -185,7 +185,7 @@ total_epochs = 16
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 #work_dir = './work_dirs/faster_rcnn_r50_fpn_1x'
-work_dir = './work_dirs/backplane_voc_20200506_rcnn_r50_fpn_1x_multiscale_kmeans_intern'
+work_dir = './work_dirs/backplane_voc_20200506_rcnn_r50_fpn_1x_multiscale_kmeans_intern_2'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

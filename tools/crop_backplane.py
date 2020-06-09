@@ -2,11 +2,8 @@ import argparse
 import copy
 import os
 import os.path as osp
-import shutil
-import time
 
 import mmcv
-import torch
 from mmcv import Config
 from mmdet.apis import init_detector, inference_detector
 
@@ -194,7 +191,8 @@ def detect_backplane(config_path, trainlog_path, device='cuda:0'):
     if osp.islink(old_data_root):
         real_data_root = osp.abspath(os.readlink(old_data_root))
     data_dir = osp.dirname(real_data_root)
-    new_data_root = osp.join(data_dir, osp.basename(real_data_root) + '_' + str(int(time.time())))
+    new_data_root = osp.join(data_dir, osp.basename(real_data_root) + '_' + str(cfg.get('version', 'v1.0')))
+    assert not osp.exists(new_data_root)
     os.makedirs(new_data_root)
     os.makedirs(osp.join(new_data_root, 'Annotations'))
     os.makedirs(osp.join(new_data_root, 'JPEGImages'))
@@ -225,8 +223,8 @@ def detect_backplane(config_path, trainlog_path, device='cuda:0'):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='crop backplane image according to backplane detector')
-    parser.add_argument('--timestamp', help='the timestamp when starting training')
-
+    parser.add_argument('config', help='train config file path', nargs=argparse.OPTIONAL)
+    parser.add_argument('log', help='log.json file path', nargs=argparse.OPTIONAL)
     args = parser.parse_args()
 
     return args
@@ -234,19 +232,19 @@ def parse_args():
 
 def main():
     args = parse_args()
-    timestamp = int(time.time()) if args.timestamp is None else int(args.timestamp)
-    meta_info_path = osp.join('metas', 'meta_{}.json'.format(cur_timestamp))
-    assert osp.exists(meta_info_path)
-    with open(meta_info_path, 'r') as f:
-        meta_info = json.load(f)
-        config_path = meta_info['config_path']
-        log_path = meta_info['log_path']
+    with open('env_info.json', 'r') as f:
+        env_info = json.load(f)
+        config_path = env_info['config_path']
+        log_path = env_info['log_path']
+    if args.config is not None:
+        config_path = args.config
+    if args.log is not None:
+        log_path = args.log
+    
+    assert config_path is not None and log_path is not None
 
-    data_root = detect_backplane(config_path, log_path)
-    with open(meta_info_path, 'w+') as f:
-        meta_info = json.load(f)
-        meta_info['data_root'] = data_root
-        json.dump(meta_info, f)
+    detect_backplane(config_path, log_path)
+
 
 if __name__ == '__main__':
     main()

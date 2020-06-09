@@ -18,9 +18,9 @@ class BackplaneEasyDataset(MyXMLDataset):
     """
     #batch_full
     # CLASSES = ('netport','two_netport','four_netport','optical_netport','two_optical_netport','four_optical_netport','backplane',
-    # CLASSES = ('netport','two_netport','four_netport','optical_netport','two_optical_netport','four_optical_netport','backplane',
-    #         'manufacturer','indicatorlight', 'usb')
-    CLASSES = ('backplane',)
+    CLASSES = ('netport','two_netport','four_netport','optical_netport','two_optical_netport','four_optical_netport','backplane',
+             'manufacturer','indicatorlight', 'usb')
+    # CLASSES = ('backplane',)
 
     def __init__(self, min_size = None, anchor_nums=None, cluster_nums=None, quiet=False, **kwargs):
         super(BackplaneEasyDataset, self).__init__(min_size, **kwargs)

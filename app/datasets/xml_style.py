@@ -96,3 +96,6 @@ class MyXMLDataset(XMLDataset):
             bboxes_ignore=bboxes_ignore.astype(np.float32),
             labels_ignore=labels_ignore.astype(np.int64))
         return ann
+        
+    def prepare_test_img(self, idx):
+        return self.prepare_train_img(idx)
