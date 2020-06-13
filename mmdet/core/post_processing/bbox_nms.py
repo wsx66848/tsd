@@ -6,6 +6,7 @@ from myutils import my_config
 from .nms_tool import *
 import numpy as np
 
+nms_tool = True
 
 def multiclass_nms(multi_bboxes,
                    multi_scores,
@@ -76,80 +77,97 @@ def multiclass_nms(multi_bboxes,
         bboxes = bboxes[inds]
         scores = scores[inds]
         labels = labels[inds]
-    
-    # nms optimization
-    classes = my_config.get('classes', [])
-    global cat2label 
-    cat2label = {cat: i for i, cat in enumerate(classes)}
-    backplane_indic = (labels == cat2label['backplane'])
-    backplane_bboxes, intern_bboxes = bboxes[backplane_indic], bboxes[~backplane_indic]
-    backplane_scores, intern_scores = scores[backplane_indic], scores[~backplane_indic]
-    backplane_labels, intern_labels = labels[backplane_indic], labels[~backplane_indic]
 
-    cuda_device = bboxes.get_device()
-    # remove duplicate backplane
-    backplane_ios = bbox_ios(backplane_bboxes, backplane_bboxes, cuda_device)
-    backplane_delete = []
-    for indic in (backplane_ios > 0.9).nonzero().tolist():
-        if indic[0] == indic[1]:
-            continue
-        backplane_delete.append(indic[0])
+    if nms_tool:
+        # nms optimization
+        classes = my_config.get('classes', [])
+        global cat2label 
+        cat2label = {cat: i for i, cat in enumerate(classes)}
+        backplane_indic = (labels == cat2label['backplane'])
+        backplane_bboxes, intern_bboxes = bboxes[backplane_indic], bboxes[~backplane_indic]
+        backplane_scores, intern_scores = scores[backplane_indic], scores[~backplane_indic]
+        backplane_labels, intern_labels = labels[backplane_indic], labels[~backplane_indic]
+
+        cuda_device = bboxes.get_device()
+        # remove duplicate backplane
+        backplane_ios = bbox_ios(backplane_bboxes, backplane_bboxes, cuda_device)
+        backplane_delete = []
+        for indic in (backplane_ios > 0.9).nonzero().tolist():
+            if indic[0] == indic[1]:
+                continue
+            backplane_delete.append(indic[0])
+            
+        backplane_delete = torch.BoolTensor([False if i in backplane_delete else True for i in range(backplane_bboxes.size(0))]).cuda(cuda_device)
+        backplane_bboxes = backplane_bboxes[backplane_delete]
+        backplane_scores = backplane_scores[backplane_delete]
+        backplane_labels = backplane_labels[backplane_delete]
+
+        backplane_score_thr = get_diff_scorethr(backplane_scores)
+        if backplane_score_thr < 0.3:
+            backplane_bboxes = backplane_bboxes[backplane_scores > backplane_score_thr]
+            backplane_labels = backplane_labels[backplane_scores > backplane_score_thr]
+            backplane_scores = backplane_scores[backplane_scores > backplane_score_thr]
+
+        intersection = bbox_intersection(intern_bboxes, backplane_bboxes, cuda_device)
+        intern_backplane_indic = torch.argmax(intersection, dim=1)
+        backplane_size = backplane_bboxes.size(0)
+        for backplane_index in range(backplane_size):
+            intern_bboxes_index = intern_bboxes[intern_backplane_indic == backplane_index]
+            intern_scores_index = intern_scores[intern_backplane_indic == backplane_index]
+            intern_labels_index = intern_labels[intern_backplane_indic == backplane_index]
+
+            # extract different class bboxes and scores, labels
+            class_specific_bboxes = dict()
+            class_specific_scores = dict()
+            class_specific_labels = dict()
+            for key in cat2label:
+                if key == 'backplane':
+                    continue
+                class_specific_indic = intern_labels_index == cat2label[key]
+                class_specific_bboxes[key] = intern_bboxes_index[class_specific_indic]
+                class_specific_scores[key] = intern_scores_index[class_specific_indic]
+                class_specific_labels[key] = intern_labels_index[class_specific_indic]
+
+            ignore_keys = ['backplane']
+
+            """
+            manu_scores = class_specific_scores['manufacturer']
+            manu_bboxes = class_specific_bboxes['manufacturer']
+            manu_labels = class_specific_labels['manufacturer']
+            if manu_bboxes.size(0) > 1:
+                _, indic = manu_scores.sort(descending=True)
+                indic = indic[:2]
+                manu_bboxes = manu_bboxes[indic]
+                manu_labels = manu_labels[indic]
+                manu_scores = manu_scores[indic]
+            class_specific_scores['manufacturer'] = manu_scores
+            class_specific_bboxes['manufacturer'] = manu_bboxes 
+            class_specific_labels['manufacturer'] = manu_labels 
+            """
+
+
+            netport_metas, two_netport_metas, four_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'netport', cuda_device)
+            class_specific_bboxes['netport'], class_specific_scores['netport'], class_specific_labels['netport'] = netport_metas
+            class_specific_bboxes['two_netport'], class_specific_scores['two_netport'], class_specific_labels['two_netport'] = two_netport_metas
+            class_specific_bboxes['four_netport'], class_specific_scores['four_netport'], class_specific_labels['four_netport'] = four_netport_metas
+
+            """
+            optical_netport_metas, two_optical_netport_metas, four_optical_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'optical_netport', cuda_device)
+            class_specific_bboxes['optical_netport'], class_specific_scores['optical_netport'], class_specific_labels['optical_netport'] = optical_netport_metas
+            class_specific_bboxes['two_optical_netport'], class_specific_scores['two_optical_netport'], class_specific_labels['two_optical_netport'] = two_optical_netport_metas
+            class_specific_bboxes['four_optical_netport'], class_specific_scores['four_optical_netport'], class_specific_labels['four_optical_netport'] = four_optical_netport_metas
+            """
+
+            for key in cat2label:
+                if key in ignore_keys:
+                    continue
+                backplane_bboxes = torch.cat((backplane_bboxes, class_specific_bboxes[key]))
+                backplane_scores = torch.cat((backplane_scores, class_specific_scores[key]))
+                backplane_labels = torch.cat((backplane_labels, class_specific_labels[key]))
         
-    backplane_delete = torch.BoolTensor([False if i in backplane_delete else True for i in range(backplane_bboxes.size(0))]).cuda(cuda_device)
-    backplane_bboxes = backplane_bboxes[backplane_delete]
-    backplane_scores = backplane_scores[backplane_delete]
-    backplane_labels = backplane_labels[backplane_delete]
-
-    intersection = bbox_intersection(intern_bboxes, backplane_bboxes, cuda_device)
-    intern_backplane_indic = torch.argmax(intersection, dim=1)
-    backplane_size = backplane_bboxes.size(0)
-    for backplane_index in range(backplane_size):
-        intern_bboxes_index = intern_bboxes[intern_backplane_indic == backplane_index]
-        intern_scores_index = intern_scores[intern_backplane_indic == backplane_index]
-        intern_labels_index = intern_labels[intern_backplane_indic == backplane_index]
-
-        # extract different class bboxes and scores, labels
-        class_specific_bboxes = dict()
-        class_specific_scores = dict()
-        class_specific_labels = dict()
-        for key in cat2label:
-            if key == 'backplane':
-                continue
-            class_specific_indic = intern_labels_index == cat2label[key]
-            class_specific_bboxes[key] = intern_bboxes_index[class_specific_indic]
-            class_specific_scores[key] = intern_scores_index[class_specific_indic]
-            class_specific_labels[key] = intern_labels_index[class_specific_indic]
-
-        ignore_keys = ['backplane']
-
-        manu_scores = class_specific_scores['manufacturer']
-        manu_bboxes = class_specific_bboxes['manufacturer']
-        manu_labels = class_specific_labels['manufacturer']
-        if manu_bboxes.size(0) > 1:
-            _, indic = manu_scores.sort(descending=True)
-            indic = indic[:2]
-            manu_bboxes = manu_bboxes[indic]
-            manu_labels = manu_labels[indic]
-            manu_scores = manu_scores[indic]
-        class_specific_scores['manufacturer'] = manu_scores
-        class_specific_bboxes['manufacturer'] = manu_bboxes 
-        class_specific_labels['manufacturer'] = manu_labels 
-
-
-        netport_metas, two_netport_metas, four_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'netport', cuda_device)
-        class_specific_bboxes['netport'], class_specific_scores['netport'], class_specific_labels['netport'] = netport_metas
-        class_specific_bboxes['two_netport'], class_specific_scores['two_netport'], class_specific_labels['two_netport'] = two_netport_metas
-        class_specific_bboxes['four_netport'], class_specific_scores['four_netport'], class_specific_labels['four_netport'] = four_netport_metas
-        for key in cat2label:
-            if key in ignore_keys:
-                continue
-            backplane_bboxes = torch.cat((backplane_bboxes, class_specific_bboxes[key]))
-            backplane_scores = torch.cat((backplane_scores, class_specific_scores[key]))
-            backplane_labels = torch.cat((backplane_labels, class_specific_labels[key]))
-    
-    bboxes = backplane_bboxes
-    scores = backplane_scores
-    labels = backplane_labels
+        bboxes = backplane_bboxes
+        scores = backplane_scores
+        labels = backplane_labels
     
     return torch.cat([bboxes, scores[:, None]], 1), labels
 
@@ -169,13 +187,13 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
 
         if four_netport_bboxes.size(0) > 0:
             four_split_bboxes, four_split_scores = split_multinetport(four_netport_bboxes, four_netport_scores, 4, direction, cuda_device)
-            four_split_labels = torch.full((four_netport_bboxes.size(0) * 4,), cat2label['netport']).long().cuda(cuda_device)
+            four_split_labels = torch.full((four_netport_bboxes.size(0) * 4,), cat2label[key]).long().cuda(cuda_device)
             netport_bboxes = torch.cat((netport_bboxes, four_split_bboxes))
             netport_scores = torch.cat((netport_scores, four_split_scores))
             netport_labels = torch.cat((netport_labels, four_split_labels))
         if two_netport_bboxes.size(0) > 0:
             two_split_bboxes, two_split_scores = split_multinetport(two_netport_bboxes, two_netport_scores, 2, direction, cuda_device)
-            two_split_labels = torch.full((two_netport_bboxes.size(0) * 2,), cat2label['netport']).long().cuda(cuda_device)
+            two_split_labels = torch.full((two_netport_bboxes.size(0) * 2,), cat2label[key]).long().cuda(cuda_device)
             netport_bboxes = torch.cat((netport_bboxes, two_split_bboxes))
             netport_scores = torch.cat((netport_scores, two_split_scores))
             netport_labels = torch.cat((netport_labels, two_split_labels))
@@ -272,15 +290,16 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
 
         netport_tensor, two_netport_tensor, four_netport_tensor= torch.Tensor(merged_netports).cuda(cuda_device), torch.Tensor(merged_two_netports).cuda(cuda_device), torch.Tensor(merged_four_netports).cuda(cuda_device)
         if netport_tensor.size(0) > 0:
-            netport_bboxes, netport_scores, netport_labels = netport_tensor[:, :4], netport_tensor[:, 4], torch.full((netport_tensor.size(0), ), cat2label['netport']).long().cuda(cuda_device)
+            netport_bboxes, netport_scores, netport_labels = netport_tensor[:, :4], netport_tensor[:, 4], torch.full((netport_tensor.size(0), ), cat2label[key]).long().cuda(cuda_device)
 
         if two_netport_tensor.size(0) > 0:
-            two_netport_bboxes, two_netport_scores, two_netport_labels = two_netport_tensor[:, :4], two_netport_tensor[:, 4], torch.full((two_netport_tensor.size(0), ), cat2label['two_netport']).long().cuda(cuda_device)
+            two_netport_bboxes, two_netport_scores, two_netport_labels = two_netport_tensor[:, :4], two_netport_tensor[:, 4], torch.full((two_netport_tensor.size(0), ), cat2label[two_key]).long().cuda(cuda_device)
 
         if four_netport_tensor.size(0) > 0:
-            four_netport_bboxes, four_netport_scores, four_netport_labels = four_netport_tensor[:, :4], four_netport_tensor[:, 4], torch.full((four_netport_tensor.size(0), ), cat2label['four_netport']).long().cuda(cuda_device)
+            four_netport_bboxes, four_netport_scores, four_netport_labels = four_netport_tensor[:, :4], four_netport_tensor[:, 4], torch.full((four_netport_tensor.size(0), ), cat2label[four_key]).long().cuda(cuda_device)
 
         # remove duplicate by ios
+        """
         diff_score_thr = 0.8
         ios_thr = 0.9
         netport_delete = []
@@ -292,14 +311,14 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
                 for indic in (netport_ios > ios_thr).nonzero().tolist():
                     if netport_scores[indic[0]] < two_netport_scores[indic[1]]:
                         netport_delete.append(indic[0])
-                    elif (netport_scores[indic[0]] - two_netport_scores[indic[1]]) / netport_scores > diff_score_thr:
+                    elif (netport_scores[indic[0]] - two_netport_scores[indic[1]]) / netport_scores[indic[0]] > diff_score_thr:
                         two_netport_delete.append(indic[1])
             if four_netport_bboxes.size(0) > 0: 
                 netport_ios = bbox_ios(netport_bboxes,  four_netport_bboxes, cuda_device)
                 for indic in (netport_ios > ios_thr).nonzero().tolist():
                     if netport_scores[indic[0]] < four_netport_scores[indic[1]]:
                         netport_delete.append(indic[0])
-                    elif (netport_scores[indic[0]] - four_netport_scores[indic[1]]) / netport_scores > diff_score_thr:
+                    elif (netport_scores[indic[0]] - four_netport_scores[indic[1]]) / netport_scores[indic[0]] > diff_score_thr:
                         four_netport_delete.append(indic[1])
         netport_delete = torch.BoolTensor([False if i in netport_delete else True for i in range(netport_bboxes.size(0))]).cuda(cuda_device)
         two_netport_delete = torch.BoolTensor([False if i in two_netport_delete else True for i in range(two_netport_bboxes.size(0))]).cuda(cuda_device)
@@ -315,12 +334,13 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
                 for indic in (two_netport_ios > ios_thr).nonzero().tolist():
                     if two_netport_scores[indic[0]] < four_netport_scores[indic[1]]:
                         two_netport_delete.append(indic[0])
-                    elif (two_netport_scores[indic[0]] - four_netport_scores[indic[1]]) / two_netport_scores > diff_score_thr:
+                    elif (two_netport_scores[indic[0]] - four_netport_scores[indic[1]]) / two_netport_scores[indic[0]] > diff_score_thr:
                         four_netport_delete.append(indic[1])
         two_netport_delete = torch.BoolTensor([False if i in two_netport_delete else True for i in range(two_netport_bboxes.size(0))]).cuda(cuda_device)
         four_netport_delete = torch.BoolTensor([False if i in four_netport_delete else True for i in range(four_netport_bboxes.size(0))]).cuda(cuda_device)
         two_netport_bboxes, two_netport_scores, two_netport_labels = two_netport_bboxes[two_netport_delete], two_netport_scores[two_netport_delete], two_netport_labels[two_netport_delete]
         four_netport_bboxes, four_netport_scores, four_netport_labels = four_netport_bboxes[four_netport_delete], four_netport_scores[four_netport_delete], four_netport_labels[four_netport_delete]
+        """
 
     return [netport_bboxes, netport_scores, netport_labels], [two_netport_bboxes, two_netport_scores, two_netport_labels], [four_netport_bboxes, four_netport_scores, four_netport_labels]
 

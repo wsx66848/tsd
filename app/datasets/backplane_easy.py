@@ -48,7 +48,7 @@ class BackplaneEasyDataset(MyXMLDataset):
         img_infos = self.img_infos
         transfroms = Compose([dict(type='LoadImageFromFile'), 
                         dict(type='LoadAnnotations', with_bbox=True),
-                        dict(type='Resize', img_scale=[self._resize], keep_ratio=True)])
+                        dict(type='Resize', img_scale=[self._resize], keep_ratio=False)])
         gt_boxes_all = dict()
         for idx in range(len(img_infos)):
             img_info = img_infos[idx]
@@ -57,7 +57,7 @@ class BackplaneEasyDataset(MyXMLDataset):
             if self.proposals is not None:
                 results['proposals'] = self.proposals[idx]
             self.pre_pipeline(results)
-            transfroms(results)
+            results = transfroms(results)
             gt_boxes = results['gt_bboxes']
             labels = ann_info['labels']
             assert len(gt_boxes) == len(labels)
@@ -129,8 +129,9 @@ class BackplaneEasyDataset(MyXMLDataset):
         for index in range(len(sorted_iou)):
             if len(deleted) == delete_num:
                 break
-            if sorted_iou[index][1] not in deleted:
-                deleted.append(sorted_iou[index][1])
+            delete_index = sorted_iou[index][2] if (anchor_all[sorted_iou[index][1]][0] / anchor_all[sorted_iou[index][1]][1]) > (anchor_all[sorted_iou[index][2]][0] / anchor_all[sorted_iou[index][2]][1]) else sorted_iou[index][1]
+            if delete_index not in deleted:
+                deleted.append(delete_index)
         final_anchor_all = np.delete(np.array(anchor_all), deleted, axis=0)
         anchor_area = [(anchor[0] * anchor[1], [anchor[0], anchor[1]]) for anchor in final_anchor_all]
         sorted_anchor_area = np.sort(np.array(anchor_area, dtype=[('area', float), ('scale', list)]), order='area')

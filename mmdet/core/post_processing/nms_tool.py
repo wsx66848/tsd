@@ -38,7 +38,7 @@ def can_merge(bbox1, bbox2, direction):
     else:
         h = bbox1[3] - bbox1[1] + 1
         w = bbox1[2] - bbox1[0] + 1
-        x1_min, x1_max, x2_min, x2_max = bbox1[1] - w * first_factor, bbox1[1] + w * first_factor, bbox1[2] - w * first_factor, bbox1[2] + w * first_factor 
+        x1_min, x1_max, x2_min, x2_max = bbox1[0] - w * first_factor, bbox1[0] + w * first_factor, bbox1[2] - w * first_factor, bbox1[2] + w * first_factor 
         y1_min, y1_max = bbox1[3] - h * (second_factor + 0.1), bbox1[3] + (second_factor  - 0.05)
         if bbox2[0] >= x1_min and bbox2[0] <= x1_max and bbox2[2] >= x2_min and bbox2[2] <= x2_max and bbox2[1] >= y1_min and bbox2[1] <= y1_max:
             return True
@@ -201,7 +201,9 @@ def get_diff_scorethr(netport_scores):
     netport_pad[0] = netport_pad[1]
     netport_pad[-1] = netport_pad[-2]
     netport_difference  = netport_pad[1:] - netport_pad[:-1]
-    netport_difference = netport_difference[1:] - netport_difference[:-1] / netport_unique_scores
+    netport_difference = (netport_difference[1:] - netport_difference[:-1]) / netport_unique_scores
+    if torch.max(netport_difference) == 0:
+        return 0
     netport_score_thr = netport_unique_scores[torch.argmax(netport_difference)]
     return netport_score_thr
 
