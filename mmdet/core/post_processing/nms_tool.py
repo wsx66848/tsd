@@ -17,7 +17,7 @@ def get_direction(bboxes):
     else:
         return 1
 
-def can_merge(bbox1, bbox2, direction):
+def can_merge(bbox1, bbox2, direction, align_thr=0.2, merge_left_thr=0.3, merge_right_thr=0.15):
     """whether the two bbox can merge
 
     Args:
@@ -27,19 +27,18 @@ def can_merge(bbox1, bbox2, direction):
     Returns:
         Bool 
     """
-    first_factor, second_factor = 0.2, 0.2
     if direction == 0:
         h = bbox1[3] - bbox1[1] + 1
         w = bbox1[2] - bbox1[0] + 1
-        y1_min, y1_max, y2_min, y2_max = bbox1[1] - h * first_factor, bbox1[1] + h * first_factor, bbox1[3] - h * first_factor, bbox1[3] + h * first_factor 
-        x1_min, x1_max = bbox1[2] - w * (second_factor + 0.1), bbox1[2] + w * (second_factor - 0.05)
+        y1_min, y1_max, y2_min, y2_max = bbox1[1] - h * align_thr, bbox1[1] + h * align_thr, bbox1[3] - h * align_thr, bbox1[3] + h * align_thr 
+        x1_min, x1_max = bbox1[2] - w * merge_left_thr, bbox1[2] + w * merge_right_thr
         if bbox2[1] >= y1_min and bbox2[1] <= y1_max and bbox2[3] >= y2_min and bbox2[3] <= y2_max and bbox2[0] >= x1_min and bbox2[0] <= x1_max:
             return True
     else:
         h = bbox1[3] - bbox1[1] + 1
         w = bbox1[2] - bbox1[0] + 1
-        x1_min, x1_max, x2_min, x2_max = bbox1[0] - w * first_factor, bbox1[0] + w * first_factor, bbox1[2] - w * first_factor, bbox1[2] + w * first_factor 
-        y1_min, y1_max = bbox1[3] - h * (second_factor + 0.1), bbox1[3] + (second_factor  - 0.05)
+        x1_min, x1_max, x2_min, x2_max = bbox1[0] - w * align_thr, bbox1[0] + w * align_thr, bbox1[2] - w * align_thr, bbox1[2] + w * align_thr 
+        y1_min, y1_max = bbox1[3] - h * merge_left_thr, bbox1[3] + h * merge_right_thr
         if bbox2[0] >= x1_min and bbox2[0] <= x1_max and bbox2[2] >= x2_min and bbox2[2] <= x2_max and bbox2[1] >= y1_min and bbox2[1] <= y1_max:
             return True
     return False
@@ -178,7 +177,7 @@ def get_outlier(netport_scale, distance_thr=0.5, cuda_device='0'):
     """
     netport_scale_unique = torch.unique(netport_scale)
     netport_outlier = torch.FloatTensor(0).cuda(cuda_device)
-    if netport_scale_unique.size(0) > 3:
+    if netport_scale_unique.size(0) > 4:
         netport_scale_distance = torch.abs(netport_scale_unique[:, None] - netport_scale_unique[None, :])
         netport_scale_sorted, _ = torch.sort(netport_scale_distance, dim=1)
         netport_neighbor_distance  = torch.sum(netport_scale_sorted[:, :4], dim=1) / 3 
@@ -195,6 +194,9 @@ def get_diff_scorethr(netport_scores):
     Returns:
        score_thr (float)
     """
+    default_score_thr = 0
+    if netport_scores.size(0) == 0:
+        return default_score_thr
     netport_unique_scores = torch.unique(netport_scores)
     netport_sort, _ = torch.sort(netport_unique_scores)
     netport_pad = F.pad(netport_sort, (1,1), 'constant')
@@ -203,11 +205,11 @@ def get_diff_scorethr(netport_scores):
     netport_difference  = netport_pad[1:] - netport_pad[:-1]
     netport_difference = (netport_difference[1:] - netport_difference[:-1]) / netport_unique_scores
     if torch.max(netport_difference) == 0:
-        return 0
+        return default_score_thr
     netport_score_thr = netport_unique_scores[torch.argmax(netport_difference)]
     return netport_score_thr
 
-def get_netport_union(netport_bboxes, netport_scores, label, thr=0.6, cuda_device='0'):
+def get_netport_union(netport_bboxes, netport_scores, label, union_thr=0.6, cuda_device='0'):
     """get netport union by iou
 
     Args:
@@ -228,7 +230,7 @@ def get_netport_union(netport_bboxes, netport_scores, label, thr=0.6, cuda_devic
     new_netport_bboxes = []
     new_netport_scores = []
     new_netport_labels = []
-    for indic in (netport_iou > thr).nonzero().tolist():
+    for indic in (netport_iou > union_thr).nonzero().tolist():
         if indic[0] == indic[1]:
             continue
         if not (indic[0] in netport_delete and indic[1] in netport_delete):

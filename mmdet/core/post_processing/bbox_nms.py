@@ -107,10 +107,14 @@ def multiclass_nms(multi_bboxes,
             backplane_bboxes = backplane_bboxes[backplane_scores > backplane_score_thr]
             backplane_labels = backplane_labels[backplane_scores > backplane_score_thr]
             backplane_scores = backplane_scores[backplane_scores > backplane_score_thr]
-
-        intersection = bbox_intersection(intern_bboxes, backplane_bboxes, cuda_device)
-        intern_backplane_indic = torch.argmax(intersection, dim=1)
-        backplane_size = backplane_bboxes.size(0)
+        
+        if backplane_bboxes.size(0) == 0:
+            intern_backplane_indic = torch.full((intern_bboxes.size(0), ), 0).long().cuda(cuda_device)
+            backplane_size = 1
+        else:
+            intersection = bbox_intersection(intern_bboxes, backplane_bboxes, cuda_device)
+            intern_backplane_indic = torch.argmax(intersection, dim=1)
+            backplane_size = backplane_bboxes.size(0)
         for backplane_index in range(backplane_size):
             intern_bboxes_index = intern_bboxes[intern_backplane_indic == backplane_index]
             intern_scores_index = intern_scores[intern_backplane_indic == backplane_index]
@@ -146,13 +150,15 @@ def multiclass_nms(multi_bboxes,
             """
 
 
-            netport_metas, two_netport_metas, four_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'netport', cuda_device)
+            netport_thr = dict(distance_thr=0.5, nested_thr=0.8, score_thr=0.3, union_thr=0.5, align_thr=0.2, merge_left_thr=0.5, merge_right_thr=0.15)
+            netport_metas, two_netport_metas, four_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'netport', thr=netport_thr, cuda_device=cuda_device)
             class_specific_bboxes['netport'], class_specific_scores['netport'], class_specific_labels['netport'] = netport_metas
             class_specific_bboxes['two_netport'], class_specific_scores['two_netport'], class_specific_labels['two_netport'] = two_netport_metas
             class_specific_bboxes['four_netport'], class_specific_scores['four_netport'], class_specific_labels['four_netport'] = four_netport_metas
 
             """
-            optical_netport_metas, two_optical_netport_metas, four_optical_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'optical_netport', cuda_device)
+            optical_netport_thr = dict(distance_thr=0.5, nested_thr=0.8, score_thr=0.3, union_thr=0.6, align_thr=0.3, merge_left_thr=0.3, merge_right_thr=0.15)
+            optical_netport_metas, two_optical_netport_metas, four_optical_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'optical_netport', thr=optical_netport_thr, cuda_device=cuda_device)
             class_specific_bboxes['optical_netport'], class_specific_scores['optical_netport'], class_specific_labels['optical_netport'] = optical_netport_metas
             class_specific_bboxes['two_optical_netport'], class_specific_scores['two_optical_netport'], class_specific_labels['two_optical_netport'] = two_optical_netport_metas
             class_specific_bboxes['four_optical_netport'], class_specific_scores['four_optical_netport'], class_specific_labels['four_optical_netport'] = four_optical_netport_metas
@@ -171,7 +177,7 @@ def multiclass_nms(multi_bboxes,
     
     return torch.cat([bboxes, scores[:, None]], 1), labels
 
-def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, key='netport', cuda_device='0'):
+def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, key='netport', thr=dict(), cuda_device='0'):
     four_key = 'four_' + key
     two_key = 'two_' + key
     four_netport_bboxes, four_netport_scores, four_netport_labels = class_specific_bboxes[four_key], class_specific_scores[four_key], class_specific_labels[four_key]
@@ -205,7 +211,7 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
             netport_scale = netport_bboxes[:, 2] - netport_bboxes[:, 0] 
         else:
             netport_scale = netport_bboxes[:, 3] - netport_bboxes[:, 1]
-        netport_outlier = get_outlier(netport_scale, distance_thr=0.5, cuda_device=cuda_device) 
+        netport_outlier = get_outlier(netport_scale, distance_thr=thr.get('distance_thr', 0.5), cuda_device=cuda_device) 
         for scale in netport_outlier.tolist():
             netport_bboxes = netport_bboxes[netport_scale != scale]
             netport_scores = netport_scores[netport_scale != scale]
@@ -215,8 +221,7 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
         # find nested netport
         netport_ios = bbox_ios(netport_bboxes, netport_bboxes, cuda_device)
         netport_delete = []
-        nested_thr = 0.8
-        for indic in (netport_ios > nested_thr).nonzero().tolist():
+        for indic in (netport_ios > thr.get('nested_thr', 0.8)).nonzero().tolist():
             if indic[0] == indic[1]:
                 continue
             if netport_scores[indic[0]] < netport_scores[indic[1]]:
@@ -227,14 +232,16 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
         netport_labels = netport_labels[netport_delete]
 
         # use second difference to set score thr
+        if netport_scores.size(0) == 0:
+            import pdb;pdb.set_trace()
         netport_score_thr = get_diff_scorethr(netport_scores)
-        if netport_score_thr < 0.3:
+        if netport_score_thr < thr.get('score_thr', 0.3):
             netport_bboxes = netport_bboxes[netport_scores > netport_score_thr]
             netport_labels = netport_labels[netport_scores > netport_score_thr]
             netport_scores = netport_scores[netport_scores > netport_score_thr]
 
         # netport union
-        new_netport_bboxes, new_netport_scores, new_netport_labels, netport_delete = get_netport_union(netport_bboxes, netport_scores, cat2label[key], thr=0.6, cuda_device=cuda_device)
+        new_netport_bboxes, new_netport_scores, new_netport_labels, netport_delete = get_netport_union(netport_bboxes, netport_scores, cat2label[key], union_thr=thr.get('union_thr', 0.6), cuda_device=cuda_device)
         netport_delete = torch.BoolTensor([False if i in netport_delete else True for i in range(netport_bboxes.size(0))]).cuda(cuda_device)
         netport_bboxes = netport_bboxes[netport_delete]
         netport_scores = netport_scores[netport_delete]
@@ -261,7 +268,7 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
             flag = False
             pop_index = -1
             for merge_index in range(len(merge_netports)):
-                if can_merge(merge_netports[merge_index][-1], netport, direction):
+                if can_merge(merge_netports[merge_index][-1], netport, direction, thr.get('align_thr', 0.2), thr.get('merge_left_thr', 0.3), thr.get('merge_right_thr', 0.15)):
                     merge_netports[merge_index].append(netport)
                     if len(merge_netports[merge_index]) == 4:
                         merged_four_netports.append(merge(merge_netports[merge_index], direction))
