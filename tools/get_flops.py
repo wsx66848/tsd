@@ -5,6 +5,10 @@ from mmcv import Config
 from mmdet.models import build_detector
 from mmdet.utils import get_model_complexity_info
 
+from app import *
+import os
+import json
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -31,6 +35,15 @@ def main():
         raise ValueError('invalid input shape')
 
     cfg = Config.fromfile(args.config)
+
+    # load anchors
+    if isinstance(cfg.model, dict) and cfg.model.get('type', 'FasterRCNN') == 'MyFasterRCNN':
+        anchors = dict()
+        with open(os.path.join(cfg.work_dir, 'anchors.json'), 'r') as f:
+            anchors = json.load(f)
+        # logger.info('loaded anchors: {}\n'.format(anchors))
+        cfg.model['anchors'] = anchors
+
     model = build_detector(
         cfg.model, train_cfg=cfg.train_cfg, test_cfg=cfg.test_cfg).cuda()
     model.eval()
