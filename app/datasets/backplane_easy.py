@@ -22,7 +22,7 @@ class BackplaneEasyDataset(MyXMLDataset):
              'manufacturer','indicatorlight', 'usb')
     # CLASSES = ('backplane',)
 
-    def __init__(self, min_size = None, anchor_nums=None, cluster_nums=None, quiet=False, **kwargs):
+    def __init__(self, min_size = None, anchor_nums=None, agg_mode='class_specific', cluster_nums=None, quiet=False, **kwargs):
         super(BackplaneEasyDataset, self).__init__(min_size, **kwargs)
         if self.test_mode == False and quiet == False:
             self.anchor_nums = anchor_nums
@@ -33,7 +33,7 @@ class BackplaneEasyDataset(MyXMLDataset):
                 if transform['type'] == 'Resize' and 'img_scale' in transform and len(transform['img_scale']) >= 1:
                     self._resize = transform['img_scale'][0]
                     break
-            self.anchors = self.get_anchor_size()
+            self.anchors = self.get_anchor_size(agg_mode)
     
     @property
     def base_anchors(self):
@@ -42,8 +42,8 @@ class BackplaneEasyDataset(MyXMLDataset):
     @property
     def ori_size(self):
         return self._resize
-
-    def get_anchor_size(self):
+    
+    def load_transformed_gt_info(self):
         CLASSES = self.CLASSES
         img_infos = self.img_infos
         transfroms = Compose([dict(type='LoadImageFromFile'), 
@@ -68,6 +68,52 @@ class BackplaneEasyDataset(MyXMLDataset):
                 if classname not in gt_boxes_all:
                     gt_boxes_all[classname] = []
                 gt_boxes_all[classname].append([w, h])
+
+        return gt_boxes_all
+
+    @staticmethod
+    def post_precess(anchor_all):
+        anchor_area = [(anchor[0] * anchor[1], [anchor[0], anchor[1]]) for anchor in anchor_all]
+        sorted_anchor_area = np.sort(np.array(anchor_area, dtype=[('area', float), ('scale', list)]), order='area')
+        anchor_sequence = [sorted_anchor_area[index][1] for index in range(len(sorted_anchor_area))]
+        return anchor_sequence
+    
+    def get_anchor_size(self, mode='class_specific'):
+        if mode == 'class_specific':
+            return self.get_class_specific_anchor_size()
+        elif mode == 'universal':
+            return self.get_universal_anchor_size()
+        else:
+            raise NotImplementedError
+
+    def get_universal_anchor_size(self):
+        gt_boxes_all = self.load_transformed_gt_info()
+        boxes_all = []
+        for key in gt_boxes_all:
+            boxes_all += gt_boxes_all[key]
+        iter_num = 0
+        assert self.anchor_nums is not None
+        model = AnchorKmeans(self.anchor_nums, 800)
+        base_anchors = []
+        while True:
+            res = model.fit(boxes_all)
+            iter_num += 1
+            if res is True and model.avg_iou() > 0.75:
+                base_anchors = model.anchors.tolist()
+                break
+            assert iter_num < 300
+        print("universal iou: %f\n" % model.avg_iou())
+
+        anchor_sequence = BackplaneEasyDataset.post_precess(base_anchors)
+        print(anchor_sequence)
+
+        # import pdb;pdb.set_trace()
+        return anchor_sequence
+
+
+    def get_class_specific_anchor_size(self):
+        CLASSES = self.CLASSES
+        gt_boxes_all = self.load_transformed_gt_info()
 
         # default k-cluster config
         cluster_k = {
@@ -94,6 +140,7 @@ class BackplaneEasyDataset(MyXMLDataset):
         
         assert gen_anchor_num >= need_anchor_num
 
+        # generate anchors
         base_anchors = dict()
         for classname in CLASSES:
             if classname in gt_boxes_all:
@@ -110,6 +157,7 @@ class BackplaneEasyDataset(MyXMLDataset):
                     assert iter_num < 300
                 print("%s iou: %f\n" % (classname, model.avg_iou()))
 
+        # anchor iou nms
         anchor_all = []
         for key in base_anchors:
             anchor_all += base_anchors[key].tolist()
@@ -133,10 +181,9 @@ class BackplaneEasyDataset(MyXMLDataset):
             if delete_index not in deleted:
                 deleted.append(delete_index)
         final_anchor_all = np.delete(np.array(anchor_all), deleted, axis=0)
-        anchor_area = [(anchor[0] * anchor[1], [anchor[0], anchor[1]]) for anchor in final_anchor_all]
-        sorted_anchor_area = np.sort(np.array(anchor_area, dtype=[('area', float), ('scale', list)]), order='area')
+        
 
-        anchor_sequence = [sorted_anchor_area[index][1] for index in range(len(sorted_anchor_area))]
+        anchor_sequence = BackplaneEasyDataset.post_precess(final_anchor_all)
         print(anchor_sequence)
 
         # import pdb;pdb.set_trace()
