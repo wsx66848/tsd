@@ -89,6 +89,9 @@ def main():
 
     # create config file in workdir
     work_dir = osp.abspath(cfg.work_dir)
+    if os.path.exists(work_dir):
+        print("Error: workdir path already exists")
+        return
     mmcv.mkdir_or_exist(work_dir)
     config_name = osp.join(work_dir, '{}.py'.format(osp.splitext(osp.basename(args.config))[0] + time.strftime('_%Y%m%d_%H%M%S',time.localtime(time.time()))))
     shutil.copy(args.config, config_name)
