@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 from mmdet.datasets import DATASETS
 from .xml_style import MyXMLDataset
 from mmdet.datasets.pipelines import Compose
@@ -24,15 +25,15 @@ class BackplaneEasyDataset(MyXMLDataset):
 
     def __init__(self, min_size = None, anchor_nums=None, agg_mode='class_specific', cluster_nums=None, quiet=False, **kwargs):
         super(BackplaneEasyDataset, self).__init__(min_size, **kwargs)
+        self._resize = (1333,800)
+        for key in range(len(kwargs.get('pipeline', []))):
+            transform = kwargs.get('pipeline')[key]
+            if transform['type'] == 'Resize' and 'img_scale' in transform and len(transform['img_scale']) >= 1:
+                self._resize = transform['img_scale'][0]
+                break
         if self.test_mode == False and quiet == False:
             self.anchor_nums = anchor_nums
             self.cluster_nums = cluster_nums
-            self._resize = (1333,800)
-            for key in range(len(kwargs.get('pipeline', []))):
-                transform = kwargs.get('pipeline')[key]
-                if transform['type'] == 'Resize' and 'img_scale' in transform and len(transform['img_scale']) >= 1:
-                    self._resize = transform['img_scale'][0]
-                    break
             self.anchors = self.get_anchor_size(agg_mode)
     
     @property
@@ -91,6 +92,58 @@ class BackplaneEasyDataset(MyXMLDataset):
         boxes_all = []
         for key in gt_boxes_all:
             boxes_all += gt_boxes_all[key]
+
+        
+        ## plot width/height
+        # x_axis = [ box[0] for box in boxes_all]
+        # y_axis = [ box[1] for box in boxes_all]
+        # import matplotlib.pyplot as plt
+        #2d 
+        # plt.hlines(1, 0, len(y_axis) - 1, colors="r", linestyles="dashed")
+        # for key in gt_boxes_all:
+            # x_axis = [ box[0] for box in gt_boxes_all[key]]
+            # y_axis = [ box[1] for box in gt_boxes_all[key]]
+            # plt.scatter(x_axis, y_axis, s=4.)  
+        # plt.xlabel('width')
+        # plt.ylabel('height')
+        # plt.show()
+        # 3d
+        """
+        fig = plt.figure()
+        ax1 = plt.axes(projection='3d')
+        ax1.scatter3D(x_axis,y_axis,z_axis, cmap='Blues')
+        """
+        """
+        import pdb;pdb.set_trace()
+        w2h_axis = [box[0] / box[1] for box in boxes_all]
+        w2h_axis.sort()
+        length = len(w2h_axis)
+        y_axis = [ (index + 1) / length * 100  for index in range(length)]
+        plt.plot(w2h_axis, y_axis)
+        # 4.3848 = 1283/29260 * 100
+        point_x, point_y = 1.001, 4.3848
+        plt.plot(point_x, point_y, 'ko')
+        plt.annotate('(%.4f, %.4f)' % (point_x,point_y),xy=(point_x,point_y),xytext=(point_x, point_y))
+        plt.hlines(point_y, 0, point_x, linestyles='dashed')
+        plt.vlines(point_x, 0, point_y, linestyles='dashed')
+        # plt.legend()
+        plt.grid()
+        plt.axis([0, 25, 0, 120])
+        plt.xlabel('width/height')
+        plt.ylabel('percentage(%)')
+        plt.show()  
+        """
+
+        areas = [box[0] * box[1] for box in boxes_all]
+        max_area = -1
+        min_area = 100000
+        for area in areas:
+            if area > max_area:
+                max_area = area
+            if area < min_area:
+                min_area = area
+        print("max scale: %s" % str(max_area / min_area))
+
         iter_num = 0
         assert self.anchor_nums is not None
         model = AnchorKmeans(self.anchor_nums, 800)
