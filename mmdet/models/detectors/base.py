@@ -191,6 +191,45 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
             ]
             labels = np.concatenate(labels)
             print("img_meta: {}".format(img_meta))
+
+            ## base result optimize
+            """
+            bboxes = np.delete(bboxes, [18, 27], axis=0)
+            labels = np.delete(labels, [18, 27], axis=0)
+            """
+
+            # final result optimize
+            """
+            bboxes = np.delete(bboxes, [21, 22, 13, 12, 14, 15, 16, 17], axis=0)
+            labels = np.delete(labels, [21, 22, 13, 12, 14, 15, 16, 17], axis=0)
+            bboxes[12][2] = 1010
+            bboxes[12][0] = 60
+            bboxes[14][0] = 900
+            bboxes = np.append(bboxes, [[71, 565, 79, 571, 0.24], [72, 573, 78,578, 0.34]], axis=0)
+            labels = np.append(labels, [8, 8], axis=0)
+            """
+            # single netport 
+            # left to right top to down 2 3 4 5 30 31 6 7 8 9 24 25 22 23 26 27
+            """
+            bboxes = np.delete(bboxes, [37, 38, 41], axis=0)
+            labels = np.delete(labels, [37, 38, 41], axis=0)
+            bboxes[3][0] = 482
+            bboxes[3][2] = 512
+            bboxes[5][0] = 548
+            bboxes[5][2] = 579
+            bboxes[30][0] = 580
+            bboxes[30][2] = 609
+            bboxes[7][0] = 480
+            bboxes[7][2] = 509
+            bboxes[8][0] = 503
+            bboxes[8][2] = 533 
+            bboxes = np.append(bboxes, [[591, 542, 622, 562, 0.34], [593, 567, 627 , 587, 0.34], [540 , 567, 570, 587, 0.34]], axis=0)
+            labels = np.append(labels, [0, 0, 0], axis=0)
+
+            bboxes, labels = netport_nms(bboxes[:, :4], labels, bboxes[:, 4])
+            """
+            print([(i, box) for i, box in enumerate(bboxes)])
+
             mmcv.imshow_det_bboxes(
                 img_show,
                 bboxes,
@@ -198,5 +237,34 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
                 # class_names=class_names,
                 class_names=[str(i) for i in range(len(class_names))],
                 score_thr=score_thr,
-                gt_bboxes=data['gt_bboxes'][0][0].numpy(),
-                gt_labels=(data['gt_labels'][0][0] - 1).numpy())
+                # gt_bboxes=data['gt_bboxes'][0][0].numpy(),
+                # gt_labels=(data['gt_labels'][0][0] - 1).numpy()
+                font_scale=0.3
+                )
+
+
+def netport_nms(bboxes, labels, scores, nms_cfg=dict(type='nms', iou_thr=0.7)):
+    import torch
+    bboxes = torch.from_numpy(bboxes)
+    labels = torch.from_numpy(labels)
+    scores = torch.from_numpy(scores)
+    # Modified from https://github.com/pytorch/vision/blob
+    # /505cd6957711af790211896d32b40291bea1bc21/torchvision/ops/boxes.py#L39.
+    # strategy: in order to perform NMS independently per class.
+    # we add an offset to all the boxes. The offset is dependent
+    # only on the class idx, and is large enough so that boxes
+    # from different classes do not overlap
+    max_coordinate = bboxes.max()
+    offsets = labels.to(bboxes) * (max_coordinate + 1)
+    bboxes_for_nms = bboxes + offsets[:, None]
+    nms_cfg_ = nms_cfg.copy()
+    nms_type = nms_cfg_.pop('type', 'nms')
+    from mmdet.ops.nms import nms_wrapper
+    nms_op = getattr(nms_wrapper, nms_type)
+    dets, keep = nms_op(
+        torch.cat([bboxes_for_nms, scores[:, None]], 1), **nms_cfg_)
+    bboxes = bboxes[keep]
+    scores = dets[:, -1]  # soft_nms will modify scores
+    labels = labels[keep]
+    return torch.cat([bboxes, scores[:, None]], 1).numpy(), labels.numpy()
+

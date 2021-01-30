@@ -6,6 +6,7 @@ from myutils import my_config
 from .nms_tool import *
 import numpy as np
 
+# should always be false when training
 nms_tool = True
 
 def multiclass_nms(multi_bboxes,
@@ -140,7 +141,7 @@ def multiclass_nms(multi_bboxes,
             manu_labels = class_specific_labels['manufacturer']
             if manu_bboxes.size(0) > 1:
                 _, indic = manu_scores.sort(descending=True)
-                indic = indic[:2]
+                indic = indic[:1]
                 manu_bboxes = manu_bboxes[indic]
                 manu_labels = manu_labels[indic]
                 manu_scores = manu_scores[indic]
@@ -156,8 +157,8 @@ def multiclass_nms(multi_bboxes,
             class_specific_bboxes['two_netport'], class_specific_scores['two_netport'], class_specific_labels['two_netport'] = two_netport_metas
             class_specific_bboxes['four_netport'], class_specific_scores['four_netport'], class_specific_labels['four_netport'] = four_netport_metas
 
-            """
-            optical_netport_thr = dict(distance_thr=0.5, nested_thr=0.8, score_thr=0.3, union_thr=0.6, align_thr=0.3, merge_left_thr=0.3, merge_right_thr=0.15)
+            """ 
+            optical_netport_thr = dict(distance_thr=1, nested_thr=1, score_thr=0.3, union_thr=0.5, align_thr=0.2, merge_left_thr=0.5, merge_right_thr=0.15)
             optical_netport_metas, two_optical_netport_metas, four_optical_netport_metas = split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_specific_labels, 'optical_netport', thr=optical_netport_thr, cuda_device=cuda_device)
             class_specific_bboxes['optical_netport'], class_specific_scores['optical_netport'], class_specific_labels['optical_netport'] = optical_netport_metas
             class_specific_bboxes['two_optical_netport'], class_specific_scores['two_optical_netport'], class_specific_labels['two_optical_netport'] = two_optical_netport_metas
@@ -306,7 +307,7 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
             four_netport_bboxes, four_netport_scores, four_netport_labels = four_netport_tensor[:, :4], four_netport_tensor[:, 4], torch.full((four_netport_tensor.size(0), ), cat2label[four_key]).long().cuda(cuda_device)
 
         # remove duplicate by ios
-        """
+    """
         diff_score_thr = 0.8
         ios_thr = 0.9
         netport_delete = []
@@ -347,7 +348,7 @@ def split_and_merge_netport(class_specific_bboxes, class_specific_scores, class_
         four_netport_delete = torch.BoolTensor([False if i in four_netport_delete else True for i in range(four_netport_bboxes.size(0))]).cuda(cuda_device)
         two_netport_bboxes, two_netport_scores, two_netport_labels = two_netport_bboxes[two_netport_delete], two_netport_scores[two_netport_delete], two_netport_labels[two_netport_delete]
         four_netport_bboxes, four_netport_scores, four_netport_labels = four_netport_bboxes[four_netport_delete], four_netport_scores[four_netport_delete], four_netport_labels[four_netport_delete]
-        """
+    """
 
     return [netport_bboxes, netport_scores, netport_labels], [two_netport_bboxes, two_netport_scores, two_netport_labels], [four_netport_bboxes, four_netport_scores, four_netport_labels]
 
